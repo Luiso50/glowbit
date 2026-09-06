@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GlowBit
 
-## Getting Started
+GlowBit es un ranking en vivo para marcas indie de belleza. Una marca ocupa el puesto #1 solo cuando su puja confirmada supera la cantidad pagada por el lider actual.
 
-First, run the development server:
+## Stack
+
+- Next.js App Router y TypeScript
+- PostgreSQL con Prisma
+- Stripe Checkout y webhook firmado
+
+## Configuracion local
+
+1. Instala dependencias:
+
+   ```bash
+   npm install
+   ```
+
+2. Copia `.env.example` a `.env` y configura las variables:
+
+   ```env
+   DATABASE_URL="postgresql://..."
+   STRIPE_SECRET_KEY="sk_test_..."
+   STRIPE_WEBHOOK_SECRET="whsec_..."
+   APP_URL="http://localhost:3000"
+   ```
+
+   No subas `.env` al repositorio.
+
+3. Crea las tablas y datos iniciales:
+
+   ```bash
+   npx prisma migrate deploy
+   npx prisma db seed
+   ```
+
+4. Inicia la aplicacion:
+
+   ```bash
+   npm run dev
+   ```
+
+Abre `http://localhost:3000`.
+
+## Stripe local
+
+Reenvia los eventos de Stripe a la aplicacion local:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Guarda el secreto `whsec_...` que devuelve Stripe CLI como `STRIPE_WEBHOOK_SECRET` en `.env`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Validacion
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx prisma generate
+npm run build
+```
 
-## Learn More
+## Flujo de puja
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. La marca abre Stripe Checkout desde el formulario.
+2. El webhook verifica la firma y confirma que el pago esta en estado `paid`.
+3. Una transaccion PostgreSQL bloquea el ranking, compara la puja con el lider y actualiza los puestos.
+4. Si una puja pagada llega tarde y ya no supera al lider, se marca para reembolso.
