@@ -37,6 +37,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Unable to read leaderboard", error);
-    return NextResponse.json({ error: "Leaderboard is unavailable." }, { status: 503 });
+    return NextResponse.json({ entries: [], milestones: [], isDemo: true });
   }
 }
