@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 
+import { sendOutbidEmail } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -15,9 +16,9 @@ async function claimMilestones(
     create: { code: "FOUNDER", title: "Marca fundadora" },
     update: {},
   });
-  const firstFifty = await transaction.milestone.upsert({
-    where: { code: "FIRST_FIFTY" },
-    create: { code: "FIRST_FIFTY", title: "Primera puja de $50" },
+  const firstDollar = await transaction.milestone.upsert({
+    where: { code: "FIRST_DOLLAR" },
+    create: { code: "FIRST_DOLLAR", title: "Primera puja de $1" },
     update: {},
   });
   const founderExists = await transaction.milestoneClaim.findFirst({
@@ -31,15 +32,15 @@ async function claimMilestones(
     });
   }
 
-  if (bid.amountCents >= 5_000) {
-    const firstFiftyExists = await transaction.milestoneClaim.findFirst({
-      where: { milestoneId: firstFifty.id },
+  if (bid.amountCents >= 100) {
+    const firstDollarExists = await transaction.milestoneClaim.findFirst({
+      where: { milestoneId: firstDollar.id },
       select: { id: true },
     });
 
-    if (!firstFiftyExists) {
+    if (!firstDollarExists) {
       await transaction.milestoneClaim.create({
-        data: { milestoneId: firstFifty.id, brandId: bid.brandId, bidId: bid.id },
+        data: { milestoneId: firstDollar.id, brandId: bid.brandId, bidId: bid.id },
       });
     }
   }
@@ -48,7 +49,7 @@ async function claimMilestones(
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
 
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+  if (!process.env.DATABASE_URL || !process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
     return NextResponse.json({ error: "Payments are not configured." }, { status: 503 });
   }
   if (!signature) {
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
     const bid = await transaction.bid.findUnique({ where: { id: bidId } });
 
     if (!bid || bid.status !== "PENDING") {
-      return { shouldRefund: false, paymentIntentId: null };
+      return { shouldRefund: false as const, paymentIntentId: null as string | null, dethroned: null as null | { to: string; oldBrandName: string; newBrandName: string; newAmountCents: number } };
     }
 
     if (bid.stripeCheckoutSessionId !== session.id) {
@@ -111,6 +112,10 @@ export async function POST(request: Request) {
     const leaderBid = leader
       ? await transaction.bid.findUnique({ where: { id: leader.bidId } })
       : null;
+    const oldBrand = leader
+      ? await transaction.brand.findUnique({ where: { id: leader.brandId } })
+      : null;
+    const newBrand = await transaction.brand.findUnique({ where: { id: bid.brandId } });
 
     if (leaderBid && bid.amountCents <= leaderBid.amountCents) {
       await transaction.bid.update({
@@ -121,7 +126,7 @@ export async function POST(request: Request) {
           paidAt: new Date(),
         },
       });
-      return { shouldRefund: true, paymentIntentId };
+      return { shouldRefund: true as const, paymentIntentId, dethroned: null as null | { to: string; oldBrandName: string; newBrandName: string; newAmountCents: number } };
     }
 
     await transaction.leaderboardEntry.deleteMany({
@@ -150,7 +155,17 @@ export async function POST(request: Request) {
     });
     await claimMilestones(transaction, bid);
 
-    return { shouldRefund: false, paymentIntentId: null };
+    const dethroned =
+      oldBrand && newBrand && oldBrand.id !== newBrand.id
+        ? {
+            to: oldBrand.contactEmail,
+            oldBrandName: oldBrand.name,
+            newBrandName: newBrand.name,
+            newAmountCents: bid.amountCents,
+          }
+        : null;
+
+    return { shouldRefund: false as const, paymentIntentId: null as string | null, dethroned };
   });
 
   if (result.shouldRefund && result.paymentIntentId) {
@@ -159,6 +174,13 @@ export async function POST(request: Request) {
       where: { id: bidId },
       data: { status: "REFUNDED" },
     });
+  }
+
+  if (result.dethroned) {
+    await sendOutbidEmail({
+      ...result.dethroned,
+      recoverAmountCents: result.dethroned.newAmountCents + 1,
+    }).catch((error) => console.error("[webhook] outbid email failed", error));
   }
 
   return NextResponse.json({ received: true });

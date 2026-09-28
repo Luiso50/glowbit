@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
+import { extractBrandImage } from "@/lib/brand-image";
 import { prisma } from "@/lib/prisma";
 import { getSocialVideoEmbedUrl } from "@/lib/social-video";
 
@@ -40,7 +41,7 @@ function isEmail(value: string) {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.APP_URL) {
+  if (!process.env.DATABASE_URL || !process.env.STRIPE_SECRET_KEY || !process.env.APP_URL) {
     return NextResponse.json({ error: "Payments are not configured." }, { status: 503 });
   }
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
     );
   }
 
+  const logoUrl = existingBrand?.logoUrl ?? await extractBrandImage(body.storeUrl!);
   const brand = existingBrand ?? await prisma.brand.create({
     data: {
       name: brandName,
@@ -99,6 +101,7 @@ export async function POST(request: Request) {
       storeUrl: body.storeUrl!,
       videoUrl: body.videoUrl,
       contactEmail,
+      logoUrl,
     },
   });
   const bid = await prisma.bid.create({

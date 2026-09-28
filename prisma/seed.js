@@ -3,13 +3,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 const brands = [
-  ["sae-soi", "Sae Soi", 5000, "Skincare de Seul con formulas ligeras y una devocion por la piel luminosa."],
-  ["melted-cloud", "Melted Cloud", 4800],
-  ["dewdrop-lab", "Dewdrop Lab", 4200],
-  ["serein-seoul", "Serein Seoul", 3800],
-  ["mori-skin", "Mori Skin", 3100],
-  ["hush-beauty", "Hush Beauty", 2800],
-  ["otona", "Otona", 2600],
+  ["sae-soi", "Sae Soi", 100, "Skincare de Seul con formulas ligeras y una devocion por la piel luminosa."],
 ];
 
 async function main() {
@@ -53,9 +47,9 @@ async function main() {
     create: { code: "FOUNDER", title: "Marca fundadora" },
     update: {},
   });
-  const firstFifty = await prisma.milestone.upsert({
-    where: { code: "FIRST_FIFTY" },
-    create: { code: "FIRST_FIFTY", title: "Primera puja de $50" },
+  const firstDollar = await prisma.milestone.upsert({
+    where: { code: "FIRST_DOLLAR" },
+    create: { code: "FIRST_DOLLAR", title: "Primera puja de $1" },
     update: {},
   });
   const leader = seeded[0];
@@ -65,8 +59,8 @@ async function main() {
     update: {},
   });
   await prisma.milestoneClaim.upsert({
-    where: { milestoneId_bidId: { milestoneId: firstFifty.id, bidId: leader.bid.id } },
-    create: { milestoneId: firstFifty.id, brandId: leader.brand.id, bidId: leader.bid.id },
+    where: { milestoneId_bidId: { milestoneId: firstDollar.id, bidId: leader.bid.id } },
+    create: { milestoneId: firstDollar.id, brandId: leader.brand.id, bidId: leader.bid.id },
     update: {},
   });
 }
